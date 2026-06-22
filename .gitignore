@@ -19,3 +19,6 @@ seen_links.json
 results.json
 test_api.py
 main.py
+
+# API açarları olan fayllar (public repoda göstərilməsin)
+agent.py
