@@ -171,171 +171,100 @@ if "pr_response" not in st.session_state:
 COLOR_MAP = {"MÜSBƏT": "#10b981", "NEYTRAL": "#f59e0b", "MƏNFİ": "#ef4444"}
 
 # ====================================================================
-# REJİM 1: BİRLƏŞDİRİLMİŞ MONİTORİNQ DASHBOARD
+# REJİM 1: MONİTORİNQ DASHBOARD
 # ====================================================================
 if rejim == "📊 Monitorinq Dashboard":
-    st.markdown("### 📊 PR Monitorinq — Agent Nəticələri və Canlı Axtarış")
+    st.markdown("### 📊 PR Monitorinq Dashboard")
 
-    # ── Filtr paneli ──────────────────────────────────────────────
-    col_period, col_sent, col_btn = st.columns([2, 2, 1])
-
-    PERIOD_MAP = {
-        "Son 24 saat": 1,
-        "Son 1 həftə": 7,
-        "Son 1 ay":    30,
-        "Son 1 rüb":   91,
-        "Son 1 il":    365,
-    }
-    with col_period:
-        selected_period = st.selectbox("📅 Zaman aralığı:", list(PERIOD_MAP.keys()))
-        days_back = PERIOD_MAP[selected_period]
-        period_cutoff = datetime.datetime.now() - datetime.timedelta(days=days_back)
-
-    with col_sent:
-        selected_sent = st.selectbox("🎯 Sentiment:", ["Hamısı", "MƏNFİ", "NEYTRAL", "MÜSBƏT"])
-
-    with col_btn:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("🔄 Yenilə", use_container_width=True):
-            st.rerun()
-
-    # ── Agent nəticələri (results.json) ───────────────────────────
-    df_agent = pd.DataFrame()
+    # ── Bütün məlumatı yüklə ──────────────────────────────────────
+    df_raw = pd.DataFrame()
     if os.path.exists(AGENT_RESULTS_FILE):
         try:
             with open(AGENT_RESULTS_FILE, encoding="utf-8") as _f:
                 raw = json.load(_f)
             if raw:
-                df_agent = pd.DataFrame(raw)
+                df_raw = pd.DataFrame(raw)
                 def _pdt(s):
                     try:
                         return datetime.datetime.fromisoformat(str(s))
                     except Exception:
                         return None
-                df_agent["_dt"] = df_agent["saved_at"].apply(_pdt)
-                df_agent = df_agent[df_agent["_dt"] >= period_cutoff]
-                if selected_sent != "Hamısı":
-                    df_agent = df_agent[df_agent["sentiment"] == selected_sent]
+                df_raw["_dt"] = df_raw["saved_at"].apply(_pdt)
         except Exception as e:
             st.warning(f"Agent faylı oxunmadı: {e}")
 
-    # ── Canlı Google News axtarışı ─────────────────────────────────
-    default_keywords = (
-        "Əmək və Əhalinin Sosial Müdafiəsi Nazirliyi\n"
-        "Dövlət Sosial Müdafiə Fondu\n"
-        "Dövlət Əmək Müffətişliyi Xidməti\n"
-        "Sosial Xidmətlər Agentliyi\n"
-        "DOST Agentliyi\n"
-        "Anar Əliyev\n"
-        "Ünvanlı sosial yardım\n"
-        "Əlillik\n"
-        "İşsizlik\n"
-        "Dövlət Tibbi Sosial Ekpertiza və Reabilitasiya Agentliyi\n"
-        "Minimum əmək haqqı"
-    )
+    if df_raw.empty:
+        st.info("📭 Hələ heç bir məlumat yoxdur. Agent.py-ni işə salın.")
+        st.stop()
 
-    with st.expander("🔍 Canlı Google News Axtarışı (əlavə mənbə)", expanded=False):
-        time_map = {"Son 24 saat": "1d", "Son 1 həftə": "7d", "Son 1 ay": "30d",
-                    "Son 1 rüb": "90d", "Son 1 il": "365d"}
-        time_token = time_map.get(selected_period, "1d")
-        acar_sozler_input = st.text_area(
-            "Açar sözlər (hər sətirə bir dənə):",
-            value=default_keywords, height=120
+    # ── 🔔 Bildiriş — son 1 saatda yeni mənfi xəbər ───────────────
+    one_hour_ago = datetime.datetime.now() - datetime.timedelta(hours=1)
+    new_menfi = df_raw[
+        (df_raw["sentiment"] == "MƏNFİ") &
+        (df_raw["_dt"].notna()) &
+        (df_raw["_dt"] >= one_hour_ago)
+    ]
+    if not new_menfi.empty:
+        st.error(
+            f"⚠️ **DİQQƏT!** Son 1 saatda **{len(new_menfi)}** yeni mənfi xəbər aşkarlandı! "
+            f"Aşağıda 🔴 Mənfi tabına baxın."
         )
-        search_btn = st.button("🚀 Google News-da Axtar", type="primary", use_container_width=True)
 
-    df_live = pd.DataFrame()
-    if search_btn:
-        keywords = [k.strip() for k in acar_sozler_input.split('\n') if k.strip()]
-        all_fetched = []
-        seen_links_local = set()
-        headers = {"User-Agent": "Mozilla/5.0"}
+    # ── Filtr paneli ──────────────────────────────────────────────
+    PERIOD_MAP = {"Son 24 saat": 1, "Son 1 həftə": 7,
+                  "Son 1 ay": 30, "Son 1 rüb": 91, "Son 1 il": 365}
 
-        with st.spinner("⏳ Google News sorğulanır..."):
-            prog = st.progress(0)
-            for idx, kw in enumerate(keywords):
-                gn_query = f'"{kw}" when:{time_token}'
-                rss_url = (f"https://news.google.com/rss/search?"
-                           f"q={urllib.parse.quote(gn_query)}&hl=az&gl=AZ&ceid=AZ:az")
-                try:
-                    resp = requests.get(rss_url, headers=headers, timeout=8)
-                    if resp.status_code == 200:
-                        soup = BeautifulSoup(resp.content, 'xml')
-                        for item in soup.find_all('item')[:5]:
-                            title = item.title.text if item.title else ""
-                            link = item.link.text if item.link else ""
-                            desc = item.description.text if item.description else ""
-                            if link and link not in seen_links_local:
-                                seen_links_local.add(link)
-                                all_fetched.append({
-                                    "title": title, "link": link,
-                                    "desc": desc, "keyword": kw
-                                })
-                except Exception:
-                    pass
-                prog.progress((idx + 1) / len(keywords))
+    col_p, col_s, col_src, col_q, col_btn = st.columns([2, 2, 2, 3, 1])
 
-        if all_fetched and model:
-            sentiment_prompt = f"""
-Sən dövlət PR analitikisən. Aşağıdakı xəbərləri analiz et.
-Spam, iş elanları, kənar xəbərləri "is_relevant": false et.
-Qalan hər biri üçün sentiment: MƏNFİ/MÜSBƏT/NEYTRAL və 1 cümlə summary ver.
-YALNIZ JSON massivi:
-[{{"link":"...","sentiment":"...","summary":"...","is_relevant":true}}]
+    with col_p:
+        selected_period = st.selectbox("📅 Dövr:", list(PERIOD_MAP.keys()))
+        period_cutoff = datetime.datetime.now() - datetime.timedelta(days=PERIOD_MAP[selected_period])
 
-{json.dumps(all_fetched, ensure_ascii=False)}
-"""
-            try:
-                ai_resp = model.generate_content(sentiment_prompt).text
-                clean_json = ai_resp.replace('```json', '').replace('```', '').strip()
-                ai_data = json.loads(clean_json)
-                valid_dict = {r.get("link"): r for r in ai_data if r.get("is_relevant", True)}
-                live_rows = []
-                for n in all_fetched:
-                    if n["link"] in valid_dict:
-                        r = valid_dict[n["link"]]
-                        sentiment = r.get("sentiment", "NEYTRAL")
-                        if selected_sent != "Hamısı" and sentiment != selected_sent:
-                            continue
-                        live_rows.append({
-                            "title": n["title"], "link": n["link"],
-                            "summary": r.get("summary", ""),
-                            "sentiment": sentiment,
-                            "keyword": n["keyword"],
-                            "source": "Google News",
-                            "saved_at": datetime.datetime.now().isoformat(),
-                        })
-                df_live = pd.DataFrame(live_rows)
-            except Exception as e:
-                st.error(f"AI analiz xətası: {e}")
-        elif all_fetched:
-            st.warning("AI açarı tapılmadı — nəticələr sentimentsiz göstərilir.")
-            df_live = pd.DataFrame([{
-                "title": n["title"], "link": n["link"], "summary": "",
-                "sentiment": "NEYTRAL", "keyword": n["keyword"], "source": "Google News"
-            } for n in all_fetched])
+    with col_s:
+        selected_sent = st.selectbox("🎯 Sentiment:", ["Hamısı", "MƏNFİ", "NEYTRAL", "MÜSBƏT"])
 
-    # ── Hər iki mənbəni birləşdir ─────────────────────────────────
-    frames = [f for f in [df_agent, df_live] if not f.empty]
-    df_all = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    with col_src:
+        src_list = ["Hamısı"] + sorted(df_raw["source"].dropna().unique().tolist())
+        selected_src = st.selectbox("🌐 Mənbə:", src_list)
+
+    with col_q:
+        search_query = st.text_input("🔍 Başlıqda axtar:", placeholder="məs: müavinət...")
+
+    with col_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("🔄", use_container_width=True, help="Yenilə"):
+            st.rerun()
+
+    # ── Filtrasiya ────────────────────────────────────────────────
+    df_all = df_raw[df_raw["_dt"] >= period_cutoff].copy()
+    if selected_sent != "Hamısı":
+        df_all = df_all[df_all["sentiment"] == selected_sent]
+    if selected_src != "Hamısı":
+        df_all = df_all[df_all["source"] == selected_src]
+    if search_query.strip():
+        q = search_query.strip().lower()
+        df_all = df_all[df_all["title"].str.lower().str.contains(q, na=False)]
 
     if df_all.empty:
-        st.info("📭 Seçilmiş dövr üçün xəbər tapılmadı. Agent işə salın və ya Google News axtarışını istifadə edin.")
+        st.info("Bu filtrə uyğun xəbər tapılmadı.")
         st.stop()
 
     # ── Metriklər ─────────────────────────────────────────────────
-    n_agent = len(df_agent)
-    n_live  = len(df_live)
-    n_menfi  = len(df_all[df_all["sentiment"] == "MƏNFİ"])
-    n_neytral= len(df_all[df_all["sentiment"] == "NEYTRAL"])
-    n_musbet = len(df_all[df_all["sentiment"] == "MÜSBƏT"])
+    n_menfi   = len(df_all[df_all["sentiment"] == "MƏNFİ"])
+    n_neytral = len(df_all[df_all["sentiment"] == "NEYTRAL"])
+    n_musbet  = len(df_all[df_all["sentiment"] == "MÜSBƏT"])
 
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("📰 Ümumi", len(df_all))
-    m2.metric("🤖 Agent", n_agent)
-    m3.metric("🔴 Mənfi", n_menfi)
-    m4.metric("🟡 Neytral", n_neytral)
-    m5.metric("🟢 Müsbət", n_musbet)
+    # Əvvəlki dövrlə müqayisə
+    prev_start = period_cutoff - datetime.timedelta(days=PERIOD_MAP[selected_period])
+    df_prev = df_raw[(df_raw["_dt"] >= prev_start) & (df_raw["_dt"] < period_cutoff)]
+    delta_total = len(df_all) - len(df_prev)
+    delta_menfi = n_menfi - len(df_prev[df_prev["sentiment"] == "MƏNFİ"])
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("📰 Ümumi xəbər", len(df_all), delta=delta_total)
+    m2.metric("🔴 Mənfi", n_menfi, delta=delta_menfi, delta_color="inverse")
+    m3.metric("🟡 Neytral", n_neytral)
+    m4.metric("🟢 Müsbət", n_musbet)
 
     st.markdown("---")
 
@@ -352,32 +281,22 @@ YALNIZ JSON massivi:
         st.plotly_chart(fig_pie, use_container_width=True)
 
     with col_bar:
-        if "_dt" in df_all.columns and df_all["_dt"].notna().any():
-            st.markdown("#### 📊 Günlük xəbər axını")
-            df_all["_date"] = pd.to_datetime(df_all["_dt"]).dt.date
-            daily = df_all.groupby(["_date", "sentiment"]).size().reset_index(name="say")
-            fig_bar = px.bar(daily, x="_date", y="say", color="sentiment",
-                             color_discrete_map=COLOR_MAP, barmode="stack",
-                             labels={"_date": "Tarix", "say": "Say", "sentiment": "Sentiment"})
-            fig_bar.update_layout(margin=dict(t=10, b=10, l=10, r=10), xaxis_title="")
-            st.plotly_chart(fig_bar, use_container_width=True)
-        else:
-            st.markdown("#### 🔑 Açar söz üzrə bölgü")
-            kw_c = df_all.groupby(["keyword", "sentiment"]).size().reset_index(name="say")
-            fig_kw = px.bar(kw_c, x="keyword", y="say", color="sentiment",
-                            color_discrete_map=COLOR_MAP, barmode="stack")
-            fig_kw.update_layout(xaxis_tickangle=-30, margin=dict(t=10, b=80))
-            st.plotly_chart(fig_kw, use_container_width=True)
+        st.markdown("#### 📊 Günlük xəbər axını")
+        df_all["_date"] = pd.to_datetime(df_all["_dt"]).dt.date
+        daily = df_all.groupby(["_date", "sentiment"]).size().reset_index(name="say")
+        fig_bar = px.bar(daily, x="_date", y="say", color="sentiment",
+                         color_discrete_map=COLOR_MAP, barmode="stack",
+                         labels={"_date": "", "say": "Say", "sentiment": "Sentiment"})
+        fig_bar.update_layout(margin=dict(t=10, b=10, l=10, r=10))
+        st.plotly_chart(fig_bar, use_container_width=True)
 
-    # ── Açar söz bölgüsü ──────────────────────────────────────────
-    if "keyword" in df_all.columns:
-        st.markdown("#### 🔑 Açar söz üzrə bölgü")
-        kw_c = df_all.groupby(["keyword", "sentiment"]).size().reset_index(name="say")
-        fig_kw = px.bar(kw_c, x="keyword", y="say", color="sentiment",
-                        color_discrete_map=COLOR_MAP, barmode="stack",
-                        labels={"keyword": "", "say": "Say", "sentiment": "Sentiment"})
-        fig_kw.update_layout(xaxis_tickangle=-30, margin=dict(t=10, b=100, l=10, r=10))
-        st.plotly_chart(fig_kw, use_container_width=True)
+    st.markdown("#### 🔑 Açar söz üzrə bölgü")
+    kw_c = df_all.groupby(["keyword", "sentiment"]).size().reset_index(name="say")
+    fig_kw = px.bar(kw_c, x="keyword", y="say", color="sentiment",
+                    color_discrete_map=COLOR_MAP, barmode="stack",
+                    labels={"keyword": "", "say": "Say", "sentiment": "Sentiment"})
+    fig_kw.update_layout(xaxis_tickangle=-30, margin=dict(t=10, b=120, l=10, r=10))
+    st.plotly_chart(fig_kw, use_container_width=True)
 
     # ── Xəbər kartları ────────────────────────────────────────────
     st.markdown("---")
@@ -398,17 +317,53 @@ YALNIZ JSON massivi:
         _render_cards(df_all[df_all["sentiment"] == "MÜSBƏT"],
                       "#10b981", "#f0fdf4", "#065f46")
 
-    if os.path.exists(AGENT_RESULTS_FILE):
+    # ── Excel / CSV ixrac ─────────────────────────────────────────
+    st.markdown("---")
+    st.markdown("#### 📥 Hesabat İxracı")
+    col_xl, col_csv = st.columns(2)
+
+    export_df = df_all[["title", "keyword", "sentiment", "source",
+                         "summary", "link", "saved_at"]].copy()
+    export_df.columns = ["Başlıq", "Açar söz", "Sentiment",
+                         "Mənbə", "Xülasə", "Link", "Tarix"]
+
+    with col_xl:
         try:
-            with open(AGENT_RESULTS_FILE, encoding="utf-8") as _f:
-                all_data = json.load(_f)
-            last_ts = max((r.get("saved_at","") for r in all_data), default="")
-            if last_ts:
-                last_dt = datetime.datetime.fromisoformat(last_ts)
-                st.caption(f"🕐 Son agent yeniləməsi: {last_dt.strftime('%d.%m.%Y %H:%M')} "
-                           f"| Arxivdə cəmi: {len(all_data)} xəbər")
-        except Exception:
-            pass
+            import io
+            buf = io.BytesIO()
+            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                export_df.to_excel(writer, index=False, sheet_name="Xəbərlər")
+            st.download_button(
+                "📊 Excel (.xlsx) yüklə",
+                data=buf.getvalue(),
+                file_name=f"pr_hesabat_{selected_period.replace(' ','_')}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True
+            )
+        except ImportError:
+            st.info("Excel üçün: `pip install openpyxl`")
+
+    with col_csv:
+        csv_data = export_df.to_csv(index=False, encoding="utf-8-sig")
+        st.download_button(
+            "📄 CSV yüklə",
+            data=csv_data,
+            file_name=f"pr_hesabat_{selected_period.replace(' ','_')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+    # ── Alt məlumat ───────────────────────────────────────────────
+    try:
+        last_ts = max((r.get("saved_at", "") for r in raw), default="")
+        if last_ts:
+            last_dt = datetime.datetime.fromisoformat(last_ts)
+            st.caption(
+                f"🕐 Son yeniləmə: {last_dt.strftime('%d.%m.%Y %H:%M')} "
+                f"| Arxivdə cəmi: {len(df_raw)} xəbər"
+            )
+    except Exception:
+        pass
 
 # ====================================================================
 # REJİM 2: PRESS-RELİZ YARAT
