@@ -376,24 +376,39 @@ if rejim == "📊 Monitorinq Dashboard":
                                              Paragraph, Spacer)
             from reportlab.pdfbase import pdfmetrics
             from reportlab.pdfbase.ttfonts import TTFont
-            import os as _os
+            import os as _os, re as _re, glob as _glob
 
-            # DejaVu şrifti var isə qeydiyyat (Unicode dəstəyi üçün)
-            _font_dirs = [
-                r"C:\Windows\Fonts",
-                "/usr/share/fonts/truetype/dejavu",
-                "/usr/share/fonts",
+            def _strip_html(text):
+                return _re.sub(r"<[^>]+>", "", str(text)).strip()
+
+            # Şrift axtarışı — layihənin fonts/ qovluğu + sistem yolları
+            _this_dir = _os.path.dirname(_os.path.abspath(__file__))
+            _repo_root = _os.path.join(_this_dir, "..")
+            _search_paths = [
+                # Layihə daxili (hər yerdə işləyir)
+                _os.path.join(_repo_root, "fonts", "arial.ttf"),
+                _os.path.join(_this_dir, "fonts", "arial.ttf"),
+                # Windows sistem
+                r"C:\Windows\Fonts\arial.ttf",
+                # Linux/Streamlit Cloud
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
             ]
+            # glob ilə əlavə axtarış
+            for _g in ["/usr/share/fonts/**/*.ttf", "/usr/local/share/fonts/**/*.ttf"]:
+                for _f in _glob.glob(_g, recursive=True):
+                    if any(n in _f for n in ["DejaVuSans.ttf", "LiberationSans-Regular", "FreeSans"]):
+                        _search_paths.append(_f)
+
             _font_name = "Helvetica"
-            for _d in _font_dirs:
-                _path = _os.path.join(_d, "DejaVuSans.ttf")
-                if _os.path.exists(_path):
+            for _fpath in _search_paths:
+                if _os.path.exists(_fpath):
                     try:
-                        pdfmetrics.registerFont(TTFont("DejaVuSans", _path))
-                        _font_name = "DejaVuSans"
+                        pdfmetrics.registerFont(TTFont("UniFont", _fpath))
+                        _font_name = "UniFont"
+                        break
                     except Exception:
-                        pass
-                    break
+                        continue
 
             buf_pdf = io.BytesIO()
             doc = SimpleDocTemplate(
@@ -414,38 +429,41 @@ if rejim == "📊 Monitorinq Dashboard":
                 "Cell", parent=styles["Normal"],
                 fontName=_font_name, fontSize=7.5, leading=10,
             )
+            hdr_style = ParagraphStyle(
+                "Hdr", parent=styles["Normal"],
+                fontName=_font_name, fontSize=8,
+                textColor=rl_colors.white,
+            )
 
             story = [
-                Paragraph("PR Monitorinq Hesabatı", title_style),
+                Paragraph(_strip_html("PR Monitorinq Hesabatı"), title_style),
                 Paragraph(
-                    f"{selected_period}  |  Cəmi: {len(export_df)} xəbər  |  "
-                    f"Tarix: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                    _strip_html(
+                        f"{selected_period}  |  Cəmi: {len(export_df)} xəbər  |  "
+                        f"Tarix: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}"
+                    ),
                     sub_style,
                 ),
                 Spacer(1, 0.4*cm),
             ]
 
-            # Cədvəl başlığı
             headers_pdf = ["Başlıq", "Açar söz", "Sentiment", "Mənbə", "Xülasə"]
             col_widths_pdf = [6*cm, 3.5*cm, 2.2*cm, 3*cm, 6.8*cm]
-            table_data = [[Paragraph(h, ParagraphStyle(
-                "H", fontName=_font_name, fontSize=8,
-                textColor=rl_colors.white, fontWeight="bold",
-            )) for h in headers_pdf]]
+            table_data = [[Paragraph(h, hdr_style) for h in headers_pdf]]
 
             _sent_rgb = {
-                "MƏNFİ":   rl_colors.HexColor("#FDDCDC"),
-                "NEYTRAL":  rl_colors.HexColor("#FFF3CD"),
-                "MÜSBƏT":   rl_colors.HexColor("#D4EDDA"),
+                "MƏNFİ":  rl_colors.HexColor("#FDDCDC"),
+                "NEYTRAL": rl_colors.HexColor("#FFF3CD"),
+                "MÜSBƏT":  rl_colors.HexColor("#D4EDDA"),
             }
             row_sent_colors = []
             for _, row in export_df.iterrows():
                 table_data.append([
-                    Paragraph(str(row["Başlıq"])[:120], cell_style),
-                    Paragraph(str(row["Açar söz"])[:40], cell_style),
-                    Paragraph(str(row["Sentiment"]), cell_style),
-                    Paragraph(str(row["Mənbə"])[:30], cell_style),
-                    Paragraph(str(row["Xülasə"])[:200], cell_style),
+                    Paragraph(_strip_html(row["Başlıq"])[:120], cell_style),
+                    Paragraph(_strip_html(row["Açar söz"])[:40], cell_style),
+                    Paragraph(_strip_html(row["Sentiment"]), cell_style),
+                    Paragraph(_strip_html(row["Mənbə"])[:30], cell_style),
+                    Paragraph(_strip_html(row["Xülasə"])[:200], cell_style),
                 ])
                 row_sent_colors.append(row["Sentiment"])
 
@@ -475,7 +493,9 @@ if rejim == "📊 Monitorinq Dashboard":
                 use_container_width=True,
             )
         except ImportError:
-            st.info("PDF üçün: `pip install reportlab`")
+            st.warning("PDF üçün: `pip install reportlab`")
+        except Exception as _pdf_err:
+            st.error(f"PDF xətası: {_pdf_err}")
 
     # ── Alt məlumat ───────────────────────────────────────────────
     try:
