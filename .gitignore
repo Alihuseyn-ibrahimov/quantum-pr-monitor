@@ -16,7 +16,6 @@ pr_monitor/
 # Sistem faylları
 monitor.log
 seen_links.json
-results.json
 test_api.py
 main.py
 
