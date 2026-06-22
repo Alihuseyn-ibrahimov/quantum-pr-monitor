@@ -410,11 +410,12 @@ if rejim == "📊 Monitorinq Dashboard":
                     except Exception:
                         continue
 
+            from reportlab.lib.pagesizes import landscape
             buf_pdf = io.BytesIO()
             doc = SimpleDocTemplate(
-                buf_pdf, pagesize=A4,
+                buf_pdf, pagesize=landscape(A4),
                 leftMargin=1.5*cm, rightMargin=1.5*cm,
-                topMargin=2*cm, bottomMargin=2*cm,
+                topMargin=1.5*cm, bottomMargin=1.5*cm,
             )
             styles = getSampleStyleSheet()
             title_style = ParagraphStyle(
@@ -447,8 +448,9 @@ if rejim == "📊 Monitorinq Dashboard":
                 Spacer(1, 0.4*cm),
             ]
 
+            # Landscape A4: 29.7cm - 3cm margin = 26.7cm istifadə olunur
             headers_pdf = ["Başlıq", "Açar söz", "Sentiment", "Mənbə", "Xülasə"]
-            col_widths_pdf = [6*cm, 3.5*cm, 2.2*cm, 3*cm, 6.8*cm]
+            col_widths_pdf = [8.5*cm, 4.5*cm, 2.5*cm, 3.2*cm, 8.0*cm]
             table_data = [[Paragraph(h, hdr_style) for h in headers_pdf]]
 
             _sent_rgb = {
@@ -467,15 +469,27 @@ if rejim == "📊 Monitorinq Dashboard":
                 ])
                 row_sent_colors.append(row["Sentiment"])
 
-            tbl = Table(table_data, colWidths=col_widths_pdf, repeatRows=1)
+            tbl = Table(table_data, colWidths=col_widths_pdf, repeatRows=1,
+                        hAlign="LEFT", splitByRow=True)
             ts = TableStyle([
-                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#1F4E79")),
-                ("TEXTCOLOR",  (0, 0), (-1, 0), rl_colors.white),
-                ("FONTSIZE",   (0, 0), (-1, -1), 7.5),
-                ("GRID",       (0, 0), (-1, -1), 0.3, rl_colors.grey),
-                ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+                # Başlıq sətri
+                ("BACKGROUND",  (0, 0), (-1, 0), rl_colors.HexColor("#1F4E79")),
+                ("TEXTCOLOR",   (0, 0), (-1, 0), rl_colors.white),
+                ("FONTSIZE",    (0, 0), (-1, 0), 9),
+                ("TOPPADDING",  (0, 0), (-1, 0), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, 0), 7),
+                # Məlumat sətirləri
+                ("FONTSIZE",    (0, 1), (-1, -1), 8),
+                ("TOPPADDING",  (0, 1), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 1), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                ("RIGHTPADDING",(0, 0), (-1, -1), 6),
+                # Xətt və hizalama
+                ("GRID",        (0, 0), (-1, -1), 0.4, rl_colors.HexColor("#CCCCCC")),
+                ("LINEBELOW",   (0, 0), (-1, 0), 1.5, rl_colors.HexColor("#1F4E79")),
+                ("VALIGN",      (0, 0), (-1, -1), "TOP"),
                 ("ROWBACKGROUNDS", (0, 1), (-1, -1),
-                 [rl_colors.white, rl_colors.HexColor("#F7F7F7")]),
+                 [rl_colors.white, rl_colors.HexColor("#F5F5F5")]),
             ])
             for r_idx, sent in enumerate(row_sent_colors, 1):
                 bg = _sent_rgb.get(sent)
