@@ -317,41 +317,165 @@ if rejim == "📊 Monitorinq Dashboard":
         _render_cards(df_all[df_all["sentiment"] == "MÜSBƏT"],
                       "#10b981", "#f0fdf4", "#065f46")
 
-    # ── Excel / CSV ixrac ─────────────────────────────────────────
+    # ── Excel / PDF ixrac ─────────────────────────────────────────
     st.markdown("---")
     st.markdown("#### 📥 Hesabat İxracı")
-    col_xl, col_csv = st.columns(2)
+
+    import io
 
     export_df = df_all[["title", "keyword", "sentiment", "source",
                          "summary", "link", "saved_at"]].copy()
     export_df.columns = ["Başlıq", "Açar söz", "Sentiment",
                          "Mənbə", "Xülasə", "Link", "Tarix"]
 
+    col_xl, col_pdf = st.columns(2)
+
     with col_xl:
         try:
-            import io
             buf = io.BytesIO()
             with pd.ExcelWriter(buf, engine="openpyxl") as writer:
                 export_df.to_excel(writer, index=False, sheet_name="Xəbərlər")
+                ws = writer.sheets["Xəbərlər"]
+                from openpyxl.styles import Font, PatternFill, Alignment
+                from openpyxl.utils import get_column_letter
+                header_font  = Font(bold=True, color="FFFFFF")
+                header_fill  = PatternFill("solid", fgColor="1F4E79")
+                sent_colors  = {"MƏNFİ": "FDDCDC", "NEYTRAL": "FFF3CD", "MÜSBƏT": "D4EDDA"}
+                for col_idx, col_name in enumerate(export_df.columns, 1):
+                    cell = ws.cell(row=1, column=col_idx)
+                    cell.font  = header_font
+                    cell.fill  = header_fill
+                    cell.alignment = Alignment(horizontal="center")
+                for row_idx, row in enumerate(export_df.itertuples(index=False), 2):
+                    sent = row[2]
+                    fill_color = sent_colors.get(sent)
+                    if fill_color:
+                        fill = PatternFill("solid", fgColor=fill_color)
+                        for col_idx in range(1, len(export_df.columns) + 1):
+                            ws.cell(row=row_idx, column=col_idx).fill = fill
+                col_widths = [60, 25, 12, 20, 60, 50, 20]
+                for i, w in enumerate(col_widths, 1):
+                    ws.column_dimensions[get_column_letter(i)].width = w
             st.download_button(
                 "📊 Excel (.xlsx) yüklə",
                 data=buf.getvalue(),
                 file_name=f"pr_hesabat_{selected_period.replace(' ','_')}.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
+                use_container_width=True,
             )
         except ImportError:
             st.info("Excel üçün: `pip install openpyxl`")
 
-    with col_csv:
-        csv_data = export_df.to_csv(index=False, encoding="utf-8-sig")
-        st.download_button(
-            "📄 CSV yüklə",
-            data=csv_data,
-            file_name=f"pr_hesabat_{selected_period.replace(' ','_')}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+    with col_pdf:
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors as rl_colors
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import cm
+            from reportlab.platypus import (SimpleDocTemplate, Table, TableStyle,
+                                             Paragraph, Spacer)
+            from reportlab.pdfbase import pdfmetrics
+            from reportlab.pdfbase.ttfonts import TTFont
+            import os as _os
+
+            # DejaVu şrifti var isə qeydiyyat (Unicode dəstəyi üçün)
+            _font_dirs = [
+                r"C:\Windows\Fonts",
+                "/usr/share/fonts/truetype/dejavu",
+                "/usr/share/fonts",
+            ]
+            _font_name = "Helvetica"
+            for _d in _font_dirs:
+                _path = _os.path.join(_d, "DejaVuSans.ttf")
+                if _os.path.exists(_path):
+                    try:
+                        pdfmetrics.registerFont(TTFont("DejaVuSans", _path))
+                        _font_name = "DejaVuSans"
+                    except Exception:
+                        pass
+                    break
+
+            buf_pdf = io.BytesIO()
+            doc = SimpleDocTemplate(
+                buf_pdf, pagesize=A4,
+                leftMargin=1.5*cm, rightMargin=1.5*cm,
+                topMargin=2*cm, bottomMargin=2*cm,
+            )
+            styles = getSampleStyleSheet()
+            title_style = ParagraphStyle(
+                "PDFTitle", parent=styles["Heading1"],
+                fontName=_font_name, fontSize=14, spaceAfter=6,
+            )
+            sub_style = ParagraphStyle(
+                "PDFSub", parent=styles["Normal"],
+                fontName=_font_name, fontSize=9, textColor=rl_colors.grey,
+            )
+            cell_style = ParagraphStyle(
+                "Cell", parent=styles["Normal"],
+                fontName=_font_name, fontSize=7.5, leading=10,
+            )
+
+            story = [
+                Paragraph("PR Monitorinq Hesabatı", title_style),
+                Paragraph(
+                    f"{selected_period}  |  Cəmi: {len(export_df)} xəbər  |  "
+                    f"Tarix: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M')}",
+                    sub_style,
+                ),
+                Spacer(1, 0.4*cm),
+            ]
+
+            # Cədvəl başlığı
+            headers_pdf = ["Başlıq", "Açar söz", "Sentiment", "Mənbə", "Xülasə"]
+            col_widths_pdf = [6*cm, 3.5*cm, 2.2*cm, 3*cm, 6.8*cm]
+            table_data = [[Paragraph(h, ParagraphStyle(
+                "H", fontName=_font_name, fontSize=8,
+                textColor=rl_colors.white, fontWeight="bold",
+            )) for h in headers_pdf]]
+
+            _sent_rgb = {
+                "MƏNFİ":   rl_colors.HexColor("#FDDCDC"),
+                "NEYTRAL":  rl_colors.HexColor("#FFF3CD"),
+                "MÜSBƏT":   rl_colors.HexColor("#D4EDDA"),
+            }
+            row_sent_colors = []
+            for _, row in export_df.iterrows():
+                table_data.append([
+                    Paragraph(str(row["Başlıq"])[:120], cell_style),
+                    Paragraph(str(row["Açar söz"])[:40], cell_style),
+                    Paragraph(str(row["Sentiment"]), cell_style),
+                    Paragraph(str(row["Mənbə"])[:30], cell_style),
+                    Paragraph(str(row["Xülasə"])[:200], cell_style),
+                ])
+                row_sent_colors.append(row["Sentiment"])
+
+            tbl = Table(table_data, colWidths=col_widths_pdf, repeatRows=1)
+            ts = TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#1F4E79")),
+                ("TEXTCOLOR",  (0, 0), (-1, 0), rl_colors.white),
+                ("FONTSIZE",   (0, 0), (-1, -1), 7.5),
+                ("GRID",       (0, 0), (-1, -1), 0.3, rl_colors.grey),
+                ("VALIGN",     (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1),
+                 [rl_colors.white, rl_colors.HexColor("#F7F7F7")]),
+            ])
+            for r_idx, sent in enumerate(row_sent_colors, 1):
+                bg = _sent_rgb.get(sent)
+                if bg:
+                    ts.add("BACKGROUND", (0, r_idx), (-1, r_idx), bg)
+            tbl.setStyle(ts)
+            story.append(tbl)
+
+            doc.build(story)
+            st.download_button(
+                "📄 PDF yüklə",
+                data=buf_pdf.getvalue(),
+                file_name=f"pr_hesabat_{selected_period.replace(' ','_')}.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
+        except ImportError:
+            st.info("PDF üçün: `pip install reportlab`")
 
     # ── Alt məlumat ───────────────────────────────────────────────
     try:
