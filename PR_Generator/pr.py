@@ -1,4 +1,4 @@
-import os
+alma import os
 
 # ====================================================================
 # --- AVTOMATİK LİMİT ARTIRICI SİSTEM ---
