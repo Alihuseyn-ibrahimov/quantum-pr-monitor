@@ -245,6 +245,11 @@ if rejim == "📊 Monitorinq Dashboard":
         q = search_query.strip().lower()
         df_all = df_all[df_all["title"].str.lower().str.contains(q, na=False)]
 
+    # MƏNFİ → NEYTRAL → MÜSBƏT sırası
+    _sent_order = {"MƏNFİ": 0, "NEYTRAL": 1, "MÜSBƏT": 2}
+    df_all["_sort"] = df_all["sentiment"].map(_sent_order).fillna(1)
+    df_all = df_all.sort_values(["_sort", "_dt"], ascending=[True, False]).drop(columns=["_sort"])
+
     if df_all.empty:
         st.info("Bu filtrə uyğun xəbər tapılmadı.")
         st.stop()
