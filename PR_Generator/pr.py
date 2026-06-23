@@ -52,7 +52,7 @@ groq_client = None
 try:
     _api_key = st.secrets["GOOGLE_API_KEY"]
     genai.configure(api_key=_api_key)
-    groq_client = genai.GenerativeModel("gemini-2.0-flash")
+    groq_client = genai.GenerativeModel("gemini-1.5-flash")
 except Exception:
     pass
 
