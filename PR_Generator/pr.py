@@ -10,7 +10,7 @@ with open(".streamlit/config.toml", "w", encoding="utf-8") as f:
     f.write("[server]\nmaxUploadSize = 2000\n")
 
 import streamlit as st
-import google.generativeai as genai
+from groq import Groq
 import urllib.parse
 import requests
 import base64
@@ -50,16 +50,20 @@ st.set_page_config(
 
 groq_client = None
 try:
-    _api_key = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=_api_key)
-    groq_client = genai.GenerativeModel("gemini-1.5-flash-latest")
+    _groq_key = st.secrets["GROQ_API_KEY"]
+    groq_client = Groq(api_key=_groq_key)
 except Exception:
     pass
 
 def _groq_generate(prompt: str) -> str:
     if not groq_client:
         return ""
-    return groq_client.generate_content(prompt).text
+    resp = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4,
+    )
+    return resp.choices[0].message.content
 
 
 # ====================================================================
