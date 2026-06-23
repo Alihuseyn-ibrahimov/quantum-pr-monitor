@@ -1,0 +1,10 @@
+streamlit
+google-generativeai
+groq
+pillow
+requests
+pandas
+plotly
+beautifulsoup4
+openpyxl
+reportlab
