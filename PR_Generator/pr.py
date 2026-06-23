@@ -10,7 +10,7 @@ with open(".streamlit/config.toml", "w", encoding="utf-8") as f:
     f.write("[server]\nmaxUploadSize = 2000\n")
 
 import streamlit as st
-import google.generativeai as genai
+from groq import Groq
 import urllib.parse
 import requests
 import base64
@@ -48,13 +48,22 @@ st.set_page_config(
     layout="wide"
 )
 
-model = None
+groq_client = None
 try:
-    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    _groq_key = st.secrets["GROQ_API_KEY"]
+    groq_client = Groq(api_key=_groq_key)
 except Exception:
     pass
+
+def _groq_generate(prompt: str) -> str:
+    if not groq_client:
+        return ""
+    resp = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+    )
+    return resp.choices[0].message.content
 
 
 # ====================================================================
@@ -552,7 +561,7 @@ elif rejim == "📝 Press-Reliz Yarat":
         submitted = st.form_submit_button("Sənədi Formalaşdır")
 
     if submitted and movzu:
-        if not model:
+        if not groq_client:
             st.error("API açarı tapılmadı!")
         else:
             with st.spinner("⏳ Press-reliz hazırlanır..."):
@@ -561,7 +570,7 @@ elif rejim == "📝 Press-Reliz Yarat":
                           f"Mövzu: {movzu}. Dil: {dil}. Ton: {ton}. "
                           f"Üslub nümunəsi: {uslub}. Dolğun rəsmi press-reliz sənədi yaz.")
                 try:
-                    st.session_state.pr_response = model.generate_content(prompt).text
+                    st.session_state.pr_response = _groq_generate(prompt)
                     st.success("Sənəd uğurla formalaşdırıldı!")
                 except Exception as e:
                     st.error(f"Xəta: {e}")
@@ -583,30 +592,16 @@ elif rejim == "📱 Sosial Media Postu Yarat":
                                      type=['jpg', 'jpeg', 'png', 'mp4'])
 
     if st.button("Sosial Media Postunu Hazırla"):
-        if not model:
+        if not groq_client:
             st.error("API açarı tapılmadı!")
         else:
             with st.spinner("⏳ Post hazırlanır..."):
                 prompt = (f"Aşağıdakı məlumata əsasən rəsmi qurumun sosial media hesabı üçün "
                           f"maraqlı, emojili post başlığı (caption) yaz:\n{sm_text}")
                 try:
-                    if uploaded_file:
-                        if uploaded_file.type in ['image/jpeg', 'image/png', 'image/jpg']:
-                            response = model.generate_content([prompt, Image.open(uploaded_file)])
-                        elif uploaded_file.type == 'video/mp4':
-                            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
-                                tmp.write(uploaded_file.read())
-                                tmp_path = tmp.name
-                            vid = genai.upload_file(path=tmp_path)
-                            while vid.state.name == "PROCESSING":
-                                time.sleep(2)
-                                vid = genai.get_file(vid.name)
-                            response = model.generate_content([prompt, vid])
-                            os.unlink(tmp_path)
-                    else:
-                        response = model.generate_content(prompt)
+                    result = _groq_generate(prompt)
                     st.markdown("### 📝 Hazırlanan Post:")
-                    st.markdown(response.text)
+                    st.markdown(result)
                 except Exception as e:
                     st.error(f"Xəta: {e}")
 
