@@ -55,65 +55,6 @@ try:
 except Exception:
     pass
 
-# ====================================================================
-# GİRİŞ SİSTEMİ
-# ====================================================================
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-if "is_admin" not in st.session_state:
-    st.session_state.is_admin = False
-
-def _check_login(username: str, password: str) -> bool:
-    try:
-        admin_user = st.secrets.get("ADMIN_USERNAME", "admin")
-        admin_pass = st.secrets["ADMIN_PASSWORD"]
-        if username == admin_user and password == admin_pass:
-            st.session_state.is_admin = True
-            return True
-    except Exception:
-        pass
-    try:
-        viewer_pass = st.secrets.get("VIEWER_PASSWORD", "")
-        if viewer_pass and password == viewer_pass:
-            st.session_state.is_admin = False
-            return True
-    except Exception:
-        pass
-    return False
-
-if not st.session_state.logged_in:
-    gerb_url_login = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Emblem_of_Azerbaijan.svg/500px-Emblem_of_Azerbaijan.svg.png"
-    try:
-        _r = requests.get(gerb_url_login, timeout=4)
-        _ct = _r.headers.get("Content-Type", "image/png")
-        hero_src_login = f"data:{_ct};base64,{base64.b64encode(_r.content).decode()}"
-    except Exception:
-        hero_src_login = gerb_url_login
-    st.markdown(
-        f'''
-        <div style="max-width:420px; margin:80px auto 0 auto; text-align:center;">
-            <img src="{hero_src_login}" width="70" style="margin-bottom:16px;">
-            <h2 style="color:#1f2937; margin-bottom:4px;">PR Monitorinq Sistemi</h2>
-            <p style="color:#6b7280; font-size:14px; margin-bottom:24px;">
-                Daxil olmaq üçün istifadəçi adı və şifrənizi daxil edin</p>
-        </div>
-        ''',
-        unsafe_allow_html=True,
-    )
-    with st.form("login_form"):
-        col_l, col_c, col_r = st.columns([1, 2, 1])
-        with col_c:
-            st.markdown("#### 🔐 Giriş")
-            login_user = st.text_input("İstifadəçi adı", placeholder="admin")
-            login_pass = st.text_input("Şifrə", type="password", placeholder="••••••••")
-            login_btn  = st.form_submit_button("Daxil ol", use_container_width=True)
-    if login_btn:
-        if _check_login(login_user.strip(), login_pass.strip()):
-            st.session_state.logged_in = True
-            st.rerun()
-        else:
-            st.error("❌ İstifadəçi adı və ya şifrə yanlışdır!")
-    st.stop()
 
 def _groq_generate(prompt: str) -> str:
     if not groq_client:
@@ -229,20 +170,10 @@ st.markdown(
 # YAN MENYU
 # ====================================================================
 st.sidebar.markdown("## 🛠️ İş Rejimi")
-
-_menu_items = ["📊 Monitorinq Dashboard", "📝 Press-Reliz Yarat", "📱 Sosial Media Postu Yarat"]
-if st.session_state.is_admin:
-    _menu_items.append("⚙️ Admin Panel")
-
-rejim = st.sidebar.radio("Zəhmət olmasa bölməni seçin:", _menu_items)
-
-st.sidebar.markdown("---")
-_role_label = "👑 Admin" if st.session_state.is_admin else "👤 İzləyici"
-st.sidebar.caption(f"Giriş: {_role_label}")
-if st.sidebar.button("🚪 Çıxış", use_container_width=True):
-    st.session_state.logged_in = False
-    st.session_state.is_admin = False
-    st.rerun()
+rejim = st.sidebar.radio(
+    "Zəhmət olmasa bölməni seçin:",
+    ["📊 Monitorinq Dashboard", "📝 Press-Reliz Yarat", "📱 Sosial Media Postu Yarat"]
+)
 
 if "pr_response" not in st.session_state:
     st.session_state.pr_response = None
@@ -674,17 +605,6 @@ elif rejim == "📱 Sosial Media Postu Yarat":
                     st.markdown(result)
                 except Exception as e:
                     st.error(f"Xəta: {e}")
-
-# ====================================================================
-# REJİM 4: ADMİN PANELİ
-# ====================================================================
-elif rejim == "⚙️ Admin Panel":
-    if not st.session_state.is_admin:
-        st.error("❌ Bu bölməyə giriş icazəniz yoxdur.")
-        st.stop()
-
-    st.markdown("### ⚙️ Admin Panel")
-    st.info("Növbəti addımlarda burada: agent idarəsi, nəticə redaktəsi və bildiriş ayarları əlavə ediləcək.")
 
 st.markdown(
     "<br><hr><center><p style='color: gray;'>"
