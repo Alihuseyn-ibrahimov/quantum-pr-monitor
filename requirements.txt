@@ -1,6 +1,6 @@
 streamlit
 google-generativeai
-groq
+groq>=0.9.0
 pillow
 requests
 pandas
