@@ -1,17 +1,21 @@
 import os
-import streamlit as st
-from groq import Groq
-import urllib.parse
-import requests
-import base64
-from bs4 import BeautifulSoup
-from PIL import Image
-import tempfile
-import time
 import datetime
 import json
+import base64
+import requests
 import pandas as pd
+import streamlit as st
 import plotly.express as px
+
+try:
+    from groq import Groq
+except Exception:
+    Groq = None
+
+try:
+    from bs4 import BeautifulSoup
+except Exception:
+    BeautifulSoup = None
 
 # ====================================================================
 # results.json yolu — lokal və Streamlit Cloud üçün
@@ -40,8 +44,9 @@ st.set_page_config(
 
 groq_client = None
 try:
-    _groq_key = st.secrets["GROQ_API_KEY"]
-    groq_client = Groq(api_key=_groq_key)
+    if Groq is not None:
+        _groq_key = st.secrets["GROQ_API_KEY"]
+        groq_client = Groq(api_key=_groq_key)
 except Exception:
     pass
 
@@ -80,7 +85,7 @@ def get_image_base64(url):
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def fetch_article_text(article_url):
-    if not article_url:
+    if not article_url or BeautifulSoup is None:
         return ""
     try:
         resp = requests.get(article_url, headers={"User-Agent": "Mozilla/5.0"}, timeout=8)
@@ -143,14 +148,13 @@ def _render_cards(df_sub, border_color, bg_color, text_color, show_date=True):
 # ====================================================================
 # BAŞLIQ
 # ====================================================================
-gerb_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/20/Emblem_of_Azerbaijan.svg/500px-Emblem_of_Azerbaijan.svg.png"
-hero_logo_src = get_image_base64(gerb_url) or "https://flagcdn.com/w160/az.png"
+_AZ_FLAG = "https://flagcdn.com/w160/az.png"
 
 st.markdown(
     f'''
     <div style="text-align: center; padding: 25px; background-color: #f8f9fa;
                 border-radius: 12px; margin-bottom: 25px; border-bottom: 5px solid #1f2937;">
-        <img src="{hero_logo_src}" width="75" style="margin-bottom: 12px;">
+        <img src="{_AZ_FLAG}" width="75" style="margin-bottom: 12px;">
         <h1 style="color: #1f2937; font-size: 28px; margin-bottom: 6px; font-weight: bold;">
             Operativ PR Monitorinq və Reputasiya Dashboard-u</h1>
         <p style="color: #4b5563; font-size: 16px;">
@@ -215,8 +219,8 @@ if rejim == "📊 Monitorinq Dashboard":
         )
 
     # ── Filtr paneli ──────────────────────────────────────────────
-    PERIOD_MAP = {"Son 24 saat": 1, "Son 1 həftə": 7,
-                  "Son 1 ay": 30, "Son 1 rüb": 91, "Son 1 il": 365}
+    PERIOD_MAP = {"Son 1 ay": 30, "Son 24 saat": 1, "Son 1 həftə": 7,
+                  "Son 1 rüb": 91, "Son 1 il": 365}
 
     col_p, col_s, col_src, col_q, col_btn = st.columns([2, 2, 2, 3, 1])
 
