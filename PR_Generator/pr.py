@@ -1,14 +1,4 @@
 import os
-
-# ====================================================================
-# --- AVTOMATİK LİMİT ARTIRICI SİSTEM ---
-# ====================================================================
-if not os.path.exists(".streamlit"):
-    os.makedirs(".streamlit")
-
-with open(".streamlit/config.toml", "w", encoding="utf-8") as f:
-    f.write("[server]\nmaxUploadSize = 2000\n")
-
 import streamlit as st
 from groq import Groq
 import urllib.parse
@@ -59,12 +49,16 @@ except Exception:
 def _groq_generate(prompt: str) -> str:
     if not groq_client:
         return ""
-    resp = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.4,
-    )
-    return resp.choices[0].message.content
+    try:
+        resp = groq_client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.4,
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        st.error(f"AI xətası: {e}")
+        return ""
 
 
 # ====================================================================
@@ -380,6 +374,8 @@ if rejim == "📊 Monitorinq Dashboard":
             )
         except ImportError:
             st.info("Excel üçün: `pip install openpyxl`")
+        except Exception as _xl_err:
+            st.warning(f"Excel xətası: {_xl_err}")
 
     with col_pdf:
         try:
